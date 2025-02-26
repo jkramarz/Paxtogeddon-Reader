@@ -31,6 +31,10 @@ By default "Ardunio" and "Events" are running on Core 1
 #include <ESPAsyncWebSrv.h>
 #include <SPIFFS.h>
 
+#if ESP_ARDUINO_VERSION_MAJOR!=3 || ESP_ARDUINO_VERSION_MINOR!=0 || ESP_ARDUINO_VERSION_PATCH!=7
+    #error "Sorry, it won't work, see https://github.com/me-no-dev/ESPAsyncWebServer/issues/1455"
+#endif
+
 //----- Constants ---------------------------------------------------------------------------------------------------
 const bool DEBUG_MODE = true;  //Will output data to the serial console if true
 
