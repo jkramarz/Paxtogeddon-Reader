@@ -38,15 +38,13 @@ const long DEBOUNCE_TIME = 350;                 //Interrupt debounce time (sweet
 const unsigned long SERIAL_BAUD_RATE = 115200;  //Serial console baud rate
 const int HTML_AUTO_REFRESH_SECONDS = 5;        //Adjust as required
 
-const byte HEARTBEAT_LED_PIN = 2;  //Adjust as required (built-in LED to show main loop "extremely fast" heartbeat!)
-const byte CLOCK_PIN = 18;         //Adjust as required
-const byte DATA_PIN = 19;          //Adjust as required
-const byte REPLAY_CLOCK_PIN = 4;   //Adjust as required
-const byte REPLAY_DATA_PIN = 12;   //Adjust as required
-const byte WIFI_MODE_PIN = 27;     //Adjust as required (built-in button on the FireBeetle)
-const byte GREEN_LED_PIN = 25;     //Adjust as required
-const byte RED_LED_PIN = 26;       //Adjust as required
-const byte YELLOW_LED_PIN = 13;    //Adjust as required
+const byte HEARTBEAT_LED_PIN = LED_BUILTIN;  //Adjust as required (built-in LED to show main loop "extremely fast" heartbeat!)
+const byte CLOCK_PIN = 0;         //Adjust as required
+const byte DATA_PIN = 1;          //Adjust as required
+// const byte WIFI_MODE_PIN = 27;     //Adjust as required (built-in button on the FireBeetle)
+// const byte GREEN_LED_PIN = 25;     //Adjust as required
+// const byte RED_LED_PIN = 26;       //Adjust as required
+// const byte YELLOW_LED_PIN = 13;    //Adjust as required
 
 const char* AP_SSID = "Paxtogeddon";          //Adjust as required
 const char* AP_PASSWORD = "13371337";         //Adjust as required
@@ -54,8 +52,9 @@ const IPAddress AP_IP(192, 168, 2, 10);       //Adjust as required
 const IPAddress AP_SUBNET(255, 255, 255, 0);  //Adjust as required
 const char* HOSTNAME = "PaxtogeddonESP32";    //Adjust as required
 
-const char* WIFI_SSID = "YOUR_WIFI_SSID";                      //Your Wifi access point SSID name
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";  //You Wifi access point password
+const char* WIFI_SSID = "";                      //Your Wifi access point SSID name
+const char* WIFI_PASSWORD = "";                  //You Wifi access point password
+
 
 //----- Volatiles (Interrupt) ---------------------------------------------------------------------------------------
 volatile unsigned long lastMicros = 0;  //Last recorded micros, works in accordance with debounce time
@@ -73,9 +72,13 @@ bool systemReboot = false;         //Set to true via web server call, at which p
 String lastCardData = "Ready.";    //Last card processed or error message
 AsyncWebServer webServer(80);      //Default port for Web Server
 
+//----- Function prototypes ----------------------------------------------------------------------------------------------
+void LedControl(bool greenLed, bool yellowLed, bool redLed, int interval);
+void OnCard(void);
+
 //----- Configure WiFi ----------------------------------------------------------------------------------------------
 void ConfigureWiFi() {
-  if (digitalRead(WIFI_MODE_PIN) == 0) {
+  if(strlen(WIFI_SSID) != 0){
     if (DEBUG_MODE) {
       Serial.println("Connecting to WiFi...");
     }
@@ -181,31 +184,31 @@ void LedControl(bool greenLed, bool yellowLed, bool redLed, int interval) {
   //Using 2N3904 NPN transistors with BASE connected to GPIO via 1K resistor
   //P50 LED wire connected to COLLECTOR
   //0v/GND connected to EMITTER
-  for (int i = 0; i < 2; i++) {
-    digitalWrite(GREEN_LED_PIN, 0);
-    digitalWrite(YELLOW_LED_PIN, 0);
-    digitalWrite(RED_LED_PIN, 0);
+  // for (int i = 0; i < 2; i++) {
+  //   digitalWrite(GREEN_LED_PIN, 0);
+  //   digitalWrite(YELLOW_LED_PIN, 0);
+  //   digitalWrite(RED_LED_PIN, 0);
 
-    delay(interval);
+  //   delay(interval);
 
-    if (greenLed) {
-      digitalWrite(GREEN_LED_PIN, 1);
-    }
+  //   if (greenLed) {
+  //     digitalWrite(GREEN_LED_PIN, 1);
+  //   }
 
-    if (yellowLed) {
-      digitalWrite(YELLOW_LED_PIN, 1);
-    }
+  //   if (yellowLed) {
+  //     digitalWrite(YELLOW_LED_PIN, 1);
+  //   }
 
-    if (redLed) {
-      digitalWrite(RED_LED_PIN, 1);
-    }
+  //   if (redLed) {
+  //     digitalWrite(RED_LED_PIN, 1);
+  //   }
 
-    delay(interval);
-  }
+  //   delay(interval);
+  // }
 
-  digitalWrite(GREEN_LED_PIN, 1);
-  digitalWrite(YELLOW_LED_PIN, 1);
-  digitalWrite(RED_LED_PIN, 1);
+  // digitalWrite(GREEN_LED_PIN, 1);
+  // digitalWrite(YELLOW_LED_PIN, 1);
+  // digitalWrite(RED_LED_PIN, 1);
 }
 
 //----- Split String ------------------------------------------------------------------------------------------------
@@ -766,18 +769,35 @@ void ParseSwitch2() {
   LedControl(true, false, false, 100);
 }
 
+inline void pullPinDown(int pinNo){
+  digitalWrite(pinNo, LOW);
+  pinMode(pinNo, OUTPUT);
+}
+
+inline void pullPinRelease(int pinNo){
+  pinMode(pinNo, INPUT);
+  digitalWrite(pinNo, HIGH);
+}
+
 //----- Card Replay -------------------------------------------------------------------------------------------------
 void CardReplayGPIO(int noOfBits, String binaryData, String cardNo) {
+  detachInterrupt(CLOCK_PIN);
+
   //Iterates over all bits of binaryData and clocks these out via GPIO
   for (int i = 0; i < noOfBits; i++) {
     int b = binaryData[i] == '0' ? 1 : 0;
-    digitalWrite(REPLAY_DATA_PIN, b);
-    digitalWrite(REPLAY_CLOCK_PIN, 0);
+    if(b == 0){
+      pullPinDown(DATA_PIN);
+    } else {
+      pullPinRelease(DATA_PIN);   
+    }
+
+    pullPinDown(CLOCK_PIN);
     delay(2);
-    digitalWrite(REPLAY_CLOCK_PIN, 1);
+    pullPinRelease(CLOCK_PIN);
   }
 
-  digitalWrite(REPLAY_DATA_PIN, 1);
+  pullPinRelease(DATA_PIN);   
 
   lastCardData = "Card Replay<br>";
   lastCardData += "Card number: " + cardNo + "<br>";
@@ -793,6 +813,8 @@ void CardReplayGPIO(int noOfBits, String binaryData, String cardNo) {
     Serial.print("Binary: ");
     Serial.println(binaryData);
   }
+
+  attachInterrupt(CLOCK_PIN, OnCard, FALLING);
 }
 
 //----- Web Server Task ---------------------------------------------------------------------------------------------
@@ -999,7 +1021,7 @@ void WebServerTask(void* parameter) {
 }
 
 //----- On Card - Interrupt Handler ---------------------------------------------------------------------------------
-void IRAM_ATTR OnCard() {
+void IRAM_ATTR OnCard(void) {
   //This is purely for debug purposes
   interruptFired = true;
 
@@ -1037,18 +1059,15 @@ void IRAM_ATTR OnCard() {
 void setup() {
   pinMode(CLOCK_PIN, INPUT);
   pinMode(DATA_PIN, INPUT);
-  pinMode(REPLAY_CLOCK_PIN, OUTPUT);
-  pinMode(REPLAY_DATA_PIN, OUTPUT);
-  pinMode(WIFI_MODE_PIN, INPUT_PULLUP);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(YELLOW_LED_PIN, OUTPUT);
+  // pinMode(GREEN_LED_PIN, OUTPUT);
+  // pinMode(RED_LED_PIN, OUTPUT);
+  // pinMode(YELLOW_LED_PIN, OUTPUT);
   pinMode(HEARTBEAT_LED_PIN, OUTPUT);
-  digitalWrite(REPLAY_CLOCK_PIN, 1);
-  digitalWrite(REPLAY_DATA_PIN, 1);
-  digitalWrite(GREEN_LED_PIN, 0);
-  digitalWrite(RED_LED_PIN, 0);
-  digitalWrite(YELLOW_LED_PIN, 0);
+  digitalWrite(CLOCK_PIN, HIGH);
+  digitalWrite(DATA_PIN, HIGH);
+  // digitalWrite(GREEN_LED_PIN, 0);
+  // digitalWrite(RED_LED_PIN, 0);
+  // digitalWrite(YELLOW_LED_PIN, 0);
   digitalWrite(HEARTBEAT_LED_PIN, 0);
 
   if (DEBUG_MODE) {
@@ -1086,7 +1105,6 @@ void setup() {
 
   LedControl(true, true, true, 100);
   attachInterrupt(CLOCK_PIN, OnCard, FALLING);
-  //attachInterrupt(digitalPinToInterrupt(CLOCK_PIN), onCard, FALLING);
 }
 
 //----- Loop --------------------------------------------------------------------------------------------------------
